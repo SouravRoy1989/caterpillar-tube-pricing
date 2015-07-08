@@ -1,7 +1,7 @@
 from sklearn.linear_model import LinearRegression
 import pandas as pd
 import evaluation
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestRegressor
 
 def extract(data):
 	data.loc[data['bracket_pricing'] == 'Yes', 'bracket_pricing'] = 1
@@ -49,7 +49,7 @@ y_train = train['cost']
 
 X_test = test[feature_names]
 
-clf = LinearRegression()
+clf = RandomForestRegressor(n_estimators = 50)
 
 evaluation.get_kfold_scores(X = X_train, y = y_train, n_folds = 8, clf = clf)
 output_final_model(X_train = X_train, y_train = y_train, X_test = X_test, clf = clf, submission_filename = 'submission.csv')

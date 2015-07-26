@@ -1,4 +1,5 @@
 import math
+import numpy as np
 from sklearn.cross_validation import KFold
 
 
@@ -19,7 +20,8 @@ def get_kfold_scores(X, y, n_folds, clf, random_state  = 10):
     	X_test = X.loc[test_index]
     	y_test = y.loc[test_index]
     	predictions = clf.predict(X_test)
-        predictions = [max(x, 0) for x in predictions]
+        predictions = np.exp(predictions) - 1
+        y_test = np.exp(y_test) - 1
     	score = rmsle(y = y_test.tolist(), y_pred = predictions)
     	score_total += score
     	print "Score: " + str(score)

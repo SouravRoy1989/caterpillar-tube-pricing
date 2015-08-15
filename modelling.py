@@ -362,11 +362,21 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename):
 	clf.fit(X_train, y_train)
 	for idx, col in enumerate(X_train):
 		print col + ':' + str(clf.feature_importances_[idx])
+	train_predictions = clf.predict(X_train)
 	predictions = clf.predict(X_test)
 	#predictions = [max(x, 0) for x in predictions]
 	predictions = np.exp(predictions) - 1
 	submission = pd.DataFrame({"id": test["id"], "cost": predictions})
 	submission.to_csv(submission_filename, index=False)
+
+	train_predictions = pd.DataFrame({"predicted_cost": train_predictions})
+	y_train = pd.DataFrame({"cost": y_train})
+	extracted_train = pd.concat(objs = [X_train, y_train, train_predictions], axis = 1)
+	extracted_train.to_csv('extracted_train.csv', index=False)
+
+	predictions = pd.DataFrame({"predicted_cost": predictions})
+	extracted_test = pd.concat(objs = [X_test, predictions], axis = 1)
+	extracted_test.to_csv('extracted_test.csv', index=False)
 
 
 if __name__ == '__main__':
@@ -377,10 +387,15 @@ if __name__ == '__main__':
 	train = extract(train)
 	test = extract(test)
 
+	#Drop columns that have too many 0s or -1s (i.e. NAs/missing values)
+	columns_to_drop = []
+	for column in train:
+		num_nulls = len(train[train[column] == -1]) + len(train[train[column] == 0])
+		if float(num_nulls)/float(len(train)) >= .975:
+			columns_to_drop.append(column)
+	train = train.drop(columns_to_drop, 1)
+	test = test.drop(columns_to_drop, 1)
 
-
-	test.to_csv('extracted_test.csv', index=False)
-	train.to_csv('extracted_train.csv', index=False)
 
     #Gather features to use - don't want to use "cost" nor any feature with an object data type.
 	feature_names = []

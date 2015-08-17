@@ -144,10 +144,13 @@ def extract(data):
 		groove_no = 0
 		groove_yes = 0
 
+		num_components = 0
 		#Get the component names you'll be working with for the row
 		for name in component_names:
 			if row[name] != '' and row[name] != '9999':
 				names.append(row[name])
+			if row[name] != '':
+				num_components += 1
 		if names:
 			for name in names:
 				if comp_variables[name]['weight'] != 'NA':
@@ -286,6 +289,7 @@ def extract(data):
 					if comp_variables[name]['groove'] == "No":
 						groove_no += 1
 
+		data_merged.set_value(idx, 'num_components', num_components)
 		data_merged.set_value(idx, 'total_weight', weight)
 		data_merged.set_value(idx, 'orentation_yes', orientation_yes)
 		data_merged.set_value(idx, 'orientation_no', orientation_no)
@@ -378,7 +382,21 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename):
 	extracted_test = pd.concat(objs = [X_test, predictions], axis = 1)
 	extracted_test.to_csv('extracted_test.csv', index=False)
 
+def extract_train_and_test(train, test):
+	#Create total number of supplier quotes variable
+	#Counts the number of distinct tube ids for each supplier
+	train_s_tid = train[['supplier', 'tube_assembly_id']]
+	test_s_tid = test[['supplier', 'tube_assembly_id']]
+	concat_s_tid = pd.concat([train_s_tid, test_s_tid])
+	grouped = concat_s_tid.groupby('supplier')
+	num_suppliers = grouped.tube_assembly_id.nunique()
+	df_num_suppliers = pd.DataFrame(num_suppliers)
+	df_num_suppliers.columns = ['total_supplier_quotes']
+	train = pd.merge(left = train, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
+	test = pd.merge(left = test, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 
+	#Create average component popularity variable
+	return (train, test)
 if __name__ == '__main__':
 	train = pd.read_csv('competition_data/train_set.csv')
 	test = pd.read_csv('competition_data/test_set.csv')
@@ -387,11 +405,14 @@ if __name__ == '__main__':
 	train = extract(train)
 	test = extract(test)
 
+	#Perform extraction that relies on aggregating data across train and test sets
+	(train, test) = extract_train_and_test(train, test)
+
 	#Drop columns that have too many 0s or -1s (i.e. NAs/missing values)
 	columns_to_drop = []
 	for column in train:
 		num_nulls = len(train[train[column] == -1]) + len(train[train[column] == 0])
-		if float(num_nulls)/float(len(train)) >= .975:
+		if float(num_nulls)/float(len(train)) >= .95:
 			columns_to_drop.append(column)
 	train = train.drop(columns_to_drop, 1)
 	test = test.drop(columns_to_drop, 1)

@@ -412,10 +412,11 @@ def extract_train_and_test(train, test):
 		if key in components_and_quantities:
 			if row['tube_assembly_id'] in components_and_quantities[key]:
 				components_and_quantities[key][row['tube_assembly_id']]['costs'].append(row['cost'])
+				components_and_quantities[key][row['tube_assembly_id']]['quantity'].append(row['quantity'])
 			else:
-				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [row['cost']]}
+				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [row['cost']], 'quantity': [row['quantity']]}
 		else:
-			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']]}}
+			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']], 'quantity': [row['quantity']]}}
 
 	counter = 0
 	for key in components_and_quantities:
@@ -448,9 +449,13 @@ def extract_train_and_test(train, test):
 						min_price_of_similar_tubes = running_min
 
 			avg_price_of_similar_tubes = float(total)/float(count)
+			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
 		train.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
 		train.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
+		if min_price_of_similar_tubes == 10000000:
+			min_price_of_similar_tubes = 0
 		train.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
+		train.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
 
 	for idx, row in test.iterrows():
 		avg_price_of_similar_tubes = 0
@@ -471,9 +476,13 @@ def extract_train_and_test(train, test):
 				if running_min < min_price_of_similar_tubes:
 					min_price_of_similar_tubes = running_min
 			avg_price_of_similar_tubes = float(total)/float(count)
+			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
 		test.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
 		test.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
+		if min_price_of_similar_tubes == 10000000:
+			min_price_of_similar_tubes = 0
 		test.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
+		test.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
 
 
 	#Other feature idea - number of tubes with the same component list

@@ -396,6 +396,87 @@ def extract_train_and_test(train, test):
 	test = pd.merge(left = test, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 
 	#Create average component popularity variable
+
+	#Create price of the similar tube variable - find tubes with the same combo of components and use its average cost
+	#as a variable (will want to refine this later)
+	#one possible refinement - if there is no exact match, come up with some type of similarity measure that incorporates cost.
+
+	component_ids = ['component_id_' + str(x) for x in range(1,9)]
+	quantities = ['quantity_' + str(x) for x in range(1,9)]
+
+	#Build a dictionary of components/quantities as keys, and as values have {tube_id_1: {costs: [list_of_costs]}, tube_id_2: ...}
+	components_and_quantities = {}
+
+	for idx, row in train.iterrows():
+		key = tuple(row[x] for x in component_ids + quantities)
+		if key in components_and_quantities:
+			if row['tube_assembly_id'] in components_and_quantities[key]:
+				components_and_quantities[key][row['tube_assembly_id']]['costs'].append(row['cost'])
+			else:
+				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [row['cost']]}
+		else:
+			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']]}}
+
+	counter = 0
+	for key in components_and_quantities:
+		print str(key) + ': ' + str(components_and_quantities[key])
+		counter += 1
+		if counter >= 5:
+			break
+
+	#Fill in the values of average price of tube with similar components. Take value 0 if no other tubes with same component
+	#combo. Idea - use median, max, min in addition to average. Also try tracking quantity and making the feature avg(cost/quantity)
+	#rather than just avg(cost).
+	for idx, row in train.iterrows():
+		avg_price_of_similar_tubes = 0
+		max_price_of_similar_tubes = 0
+		min_price_of_similar_tubes = 10000000
+		key = tuple(row[x] for x in component_ids + quantities)
+
+		if len(components_and_quantities[key]) > 1:
+			total = 0
+			count = 0
+			for tube_id in components_and_quantities[key]:
+				if tube_id != row['tube_assembly_id']:
+					total += sum(components_and_quantities[key][tube_id]['costs'])
+					count += len(components_and_quantities[key][tube_id]['costs'])
+					running_max = max(components_and_quantities[key][tube_id]['costs'])
+					running_min = min(components_and_quantities[key][tube_id]['costs'])
+					if running_max > max_price_of_similar_tubes:
+						max_price_of_similar_tubes = running_max
+					if running_min < min_price_of_similar_tubes:
+						min_price_of_similar_tubes = running_min
+
+			avg_price_of_similar_tubes = float(total)/float(count)
+		train.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
+		train.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
+		train.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
+
+	for idx, row in test.iterrows():
+		avg_price_of_similar_tubes = 0
+		max_price_of_similar_tubes = 0
+		min_price_of_similar_tubes = 10000000
+		key = tuple(row[x] for x in component_ids + quantities)
+
+		if key in components_and_quantities:
+			total = 0
+			count = 0
+			for tube_id in components_and_quantities[key]:
+				total += sum(components_and_quantities[key][tube_id]['costs'])
+				count += len(components_and_quantities[key][tube_id]['costs'])
+				running_max = max(components_and_quantities[key][tube_id]['costs'])
+				running_min = min(components_and_quantities[key][tube_id]['costs'])
+				if running_max > max_price_of_similar_tubes:
+					max_price_of_similar_tubes = running_max
+				if running_min < min_price_of_similar_tubes:
+					min_price_of_similar_tubes = running_min
+			avg_price_of_similar_tubes = float(total)/float(count)
+		test.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
+		test.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
+		test.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
+
+
+	#Other feature idea - number of tubes with the same component list
 	return (train, test)
 if __name__ == '__main__':
 	train = pd.read_csv('competition_data/train_set.csv')

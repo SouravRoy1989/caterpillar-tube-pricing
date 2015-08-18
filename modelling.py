@@ -428,6 +428,7 @@ def extract_train_and_test(train, test):
 	#Fill in the values of average price of tube with similar components. Take value 0 if no other tubes with same component
 	#combo. Idea - use median, max, min in addition to average. Also try tracking quantity and making the feature avg(cost/quantity)
 	#rather than just avg(cost).
+	'''
 	for idx, row in train.iterrows():
 		avg_price_of_similar_tubes = 0
 		max_price_of_similar_tubes = 0
@@ -486,6 +487,7 @@ def extract_train_and_test(train, test):
 
 
 	#Other feature idea - number of tubes with the same component list
+	'''
 	return (train, test)
 if __name__ == '__main__':
 	train = pd.read_csv('competition_data/train_set.csv')

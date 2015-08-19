@@ -8,6 +8,17 @@ from sklearn.preprocessing import LabelEncoder
 import os
 import csv
 
+def get_adjacent_tube_assembly_ids(tube_assembly_id):
+	tube_assembly_num = int(tube_assembly_id[3:])
+	tube_assembly_down = str(tube_assembly_num - 1)
+	tube_assembly_up = str(tube_assembly_num + 1)
+	while len(tube_assembly_down) < 5:
+		tube_assembly_down = '0' + tube_assembly_down
+	while len(tube_assembly_up) < 5:
+		tube_assembly_up = '0' + tube_assembly_up
+
+	return ('TA-' + tube_assembly_down, 'TA-' + tube_assembly_up)
+
 def extract(data):
 	
 	#tube_data = pd.read_csv('competition_data/tube.csv').fillna("")
@@ -418,23 +429,37 @@ def extract_train_and_test(train, test):
 		else:
 			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']], 'quantity': [row['quantity']]}}
 
+	for idx, row in test.iterrows():
+		key = tuple(row[x] for x in component_ids + quantities)
+		if key in components_and_quantities:
+			if row['tube_assembly_id'] in components_and_quantities[key]:
+				components_and_quantities[key][row['tube_assembly_id']]['quantity'].append(row['quantity'])
+			else:
+				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [], 'quantity': [row['quantity']]}
+		else:
+			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [], 'quantity': [row['quantity']]}}
+
+
 	counter = 0
 	for key in components_and_quantities:
 		print str(key) + ': ' + str(components_and_quantities[key])
 		counter += 1
 		if counter >= 5:
 			break
-
+	#Save the dict to play around with it
+	import pickle
+	with open('components_and_quantities.pkl', 'wb') as f:
+		pickle.dump(components_and_quantities, f)
 	#Fill in the values of average price of tube with similar components. Take value 0 if no other tubes with same component
 	#combo. Idea - use median, max, min in addition to average. Also try tracking quantity and making the feature avg(cost/quantity)
 	#rather than just avg(cost).
-	'''
+	
 	for idx, row in train.iterrows():
 		avg_price_of_similar_tubes = 0
 		max_price_of_similar_tubes = 0
 		min_price_of_similar_tubes = 10000000
 		key = tuple(row[x] for x in component_ids + quantities)
-
+		'''
 		if len(components_and_quantities[key]) > 1:
 			total = 0
 			count = 0
@@ -457,13 +482,39 @@ def extract_train_and_test(train, test):
 			min_price_of_similar_tubes = 0
 		train.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
 		train.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
+		'''
+
+		num_tubes_with_same_component_list = len(components_and_quantities[key])
+		train.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
+
+		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
+		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
+		#Code below extracts the minimum 
+		#Possible refinement - make adjacent_cost the cost with the closest quantity to the record we are looking at
+		tube_assembly_id = row['tube_assembly_id']
+		adjacent_tube_assembly_ids = get_adjacent_tube_assembly_ids(tube_assembly_id)
+		min_adjacent_cost = 0
+		max_adjacent_cost = 0
+		average_adjacent_cost = 0
+		for adjacent_tube in adjacent_tube_assembly_ids:
+			if adjacent_tube in components_and_quantities[key] and components_and_quantities[key][adjacent_tube]['costs']:
+				min_adjacent_cost = min(components_and_quantities[key][adjacent_tube]['costs'])
+				max_adjacent_cost = max(components_and_quantities[key][adjacent_tube]['costs'])
+				average_adjacent_cost = sum(components_and_quantities[key][adjacent_tube]['costs'])/float(len(components_and_quantities[key][adjacent_tube]['costs']))
+
+				break
+		train.set_value(idx, "min_adjacent_cost", min_adjacent_cost)
+		train.set_value(idx, "max_adjacent_cost", max_adjacent_cost)
+		train.set_value(idx, "average_adjacent_cost", average_adjacent_cost)
+
+
 
 	for idx, row in test.iterrows():
 		avg_price_of_similar_tubes = 0
 		max_price_of_similar_tubes = 0
 		min_price_of_similar_tubes = 10000000
 		key = tuple(row[x] for x in component_ids + quantities)
-
+		'''
 		if key in components_and_quantities:
 			total = 0
 			count = 0
@@ -484,11 +535,31 @@ def extract_train_and_test(train, test):
 			min_price_of_similar_tubes = 0
 		test.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
 		test.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
+		'''
 
+		num_tubes_with_same_component_list = len(components_and_quantities[key])
+		test.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
 
-	#Other feature idea - number of tubes with the same component list
-	'''
+		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
+		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
+		#Code below extracts the minimum 
+		tube_assembly_id = row['tube_assembly_id']
+		adjacent_tube_assembly_ids = get_adjacent_tube_assembly_ids(tube_assembly_id)
+		min_adjacent_cost = 0
+		max_adjacent_cost = 0
+		average_adjacent_cost = 0
+		for adjacent_tube in adjacent_tube_assembly_ids:
+			if adjacent_tube in components_and_quantities[key] and components_and_quantities[key][adjacent_tube]['costs']:
+				min_adjacent_cost = min(components_and_quantities[key][adjacent_tube]['costs'])
+				max_adjacent_cost = max(components_and_quantities[key][adjacent_tube]['costs'])
+				average_adjacent_cost = sum(components_and_quantities[key][adjacent_tube]['costs'])/float(len(components_and_quantities[key][adjacent_tube]['costs']))
+				break
+		test.set_value(idx, "min_adjacent_cost", min_adjacent_cost)
+		test.set_value(idx, "max_adjacent_cost", max_adjacent_cost)
+		test.set_value(idx, "average_adjacent_cost", average_adjacent_cost)
+
 	return (train, test)
+
 if __name__ == '__main__':
 	train = pd.read_csv('competition_data/train_set.csv')
 	test = pd.read_csv('competition_data/test_set.csv')

@@ -465,6 +465,7 @@ def extract_train_and_test(train, test):
 		max_price_of_similar_tubes = 0
 		min_price_of_similar_tubes = 10000000
 		key = tuple(row[x] for x in component_ids + quantities)
+		
 		'''
 		if len(components_and_quantities[key]) > 1:
 			total = 0
@@ -473,14 +474,16 @@ def extract_train_and_test(train, test):
 				if tube_id != row['tube_assembly_id']:
 					total += sum(components_and_quantities[key][tube_id]['costs'])
 					count += len(components_and_quantities[key][tube_id]['costs'])
-					running_max = max(components_and_quantities[key][tube_id]['costs'])
-					running_min = min(components_and_quantities[key][tube_id]['costs'])
-					if running_max > max_price_of_similar_tubes:
-						max_price_of_similar_tubes = running_max
-					if running_min < min_price_of_similar_tubes:
-						min_price_of_similar_tubes = running_min
+					if components_and_quantities[key][tube_id]['costs']:
+						running_max = max(components_and_quantities[key][tube_id]['costs'])
+						running_min = min(components_and_quantities[key][tube_id]['costs'])
+						if running_max > max_price_of_similar_tubes:
+							max_price_of_similar_tubes = running_max
+						if running_min < min_price_of_similar_tubes:
+							min_price_of_similar_tubes = running_min
 
-			avg_price_of_similar_tubes = float(total)/float(count)
+			if count != 0:
+				avg_price_of_similar_tubes = float(total)/float(count)
 			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
 		train.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
 		train.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
@@ -524,6 +527,7 @@ def extract_train_and_test(train, test):
 		max_price_of_similar_tubes = 0
 		min_price_of_similar_tubes = 10000000
 		key = tuple(row[x] for x in component_ids + quantities)
+		
 		'''
 		if key in components_and_quantities:
 			total = 0
@@ -531,13 +535,17 @@ def extract_train_and_test(train, test):
 			for tube_id in components_and_quantities[key]:
 				total += sum(components_and_quantities[key][tube_id]['costs'])
 				count += len(components_and_quantities[key][tube_id]['costs'])
-				running_max = max(components_and_quantities[key][tube_id]['costs'])
-				running_min = min(components_and_quantities[key][tube_id]['costs'])
-				if running_max > max_price_of_similar_tubes:
-					max_price_of_similar_tubes = running_max
-				if running_min < min_price_of_similar_tubes:
-					min_price_of_similar_tubes = running_min
-			avg_price_of_similar_tubes = float(total)/float(count)
+				if components_and_quantities[key][tube_id]['costs']:
+					running_max = max(components_and_quantities[key][tube_id]['costs'])
+					running_min = min(components_and_quantities[key][tube_id]['costs'])
+					if running_max > max_price_of_similar_tubes:
+						max_price_of_similar_tubes = running_max
+					if running_min < min_price_of_similar_tubes:
+						min_price_of_similar_tubes = running_min
+			
+			if count != 0:
+				avg_price_of_similar_tubes = float(total)/float(count)
+				
 			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
 		test.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
 		test.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
@@ -571,6 +579,16 @@ def extract_train_and_test(train, test):
 		test.set_value(idx, "max_adjacent_cost", max_adjacent_cost)
 		test.set_value(idx, "average_adjacent_cost", average_adjacent_cost)
 
+	suppliers_and_quote_dates = pd.concat([test[['supplier', 'quote_year', 'quote_month']], train[['supplier', 'quote_year', 'quote_month']]])
+	grouped = suppliers_and_quote_dates.groupby('supplier')
+	min_years = grouped.aggregate(np.min)
+	min_years.columns = ['min_quote_year', 'min_quote_month']
+	train = pd.merge(left = train, right = min_years, left_on = 'supplier', how = 'left', right_index = True)
+	test = pd.merge(left = test, right = min_years, left_on = 'supplier', how = 'left', right_index = True)
+
+	train['length_of_supplier_relationship'] = (train['quote_year'] - train['min_quote_year']) * 12 + train['quote_month'] - train['min_quote_month']
+	test['length_of_supplier_relationship'] = (test['quote_year'] - test['min_quote_year']) * 12 + test['quote_month'] - test['min_quote_month']
+	
 	return (train, test)
 
 if __name__ == '__main__':

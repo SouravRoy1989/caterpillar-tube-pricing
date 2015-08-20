@@ -99,6 +99,7 @@ def extract(data):
 				comp_variables[row['component_id']] = row
 
 	counter = {x:0 for x in range(10)}
+	'''
 	#Add all of the relevant component data.
 	for idx, row in data_merged.iterrows():
 		count = 0
@@ -369,6 +370,7 @@ def extract(data):
 			values.add(comp_variables[entry]['unique_feature'])
 	print values
 
+	'''
 
 
 	return data_merged
@@ -417,6 +419,7 @@ def extract_train_and_test(train, test):
 
 	#Build a dictionary of components/quantities as keys, and as values have {tube_id_1: {costs: [list_of_costs]}, tube_id_2: ...}
 	components_and_quantities = {}
+	from sets import Set
 
 	for idx, row in train.iterrows():
 		key = tuple(row[x] for x in component_ids + quantities)
@@ -424,20 +427,23 @@ def extract_train_and_test(train, test):
 			if row['tube_assembly_id'] in components_and_quantities[key]:
 				components_and_quantities[key][row['tube_assembly_id']]['costs'].append(row['cost'])
 				components_and_quantities[key][row['tube_assembly_id']]['quantity'].append(row['quantity'])
+				components_and_quantities[key][row['tube_assembly_id']]['suppliers'].add(row['supplier'])
+
 			else:
-				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [row['cost']], 'quantity': [row['quantity']]}
+				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [row['cost']], 'quantity': [row['quantity']], 'suppliers': Set([row['supplier']])}
 		else:
-			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']], 'quantity': [row['quantity']]}}
+			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [row['cost']], 'quantity': [row['quantity']], 'suppliers': Set([row['supplier']])}}
 
 	for idx, row in test.iterrows():
 		key = tuple(row[x] for x in component_ids + quantities)
 		if key in components_and_quantities:
 			if row['tube_assembly_id'] in components_and_quantities[key]:
 				components_and_quantities[key][row['tube_assembly_id']]['quantity'].append(row['quantity'])
+				components_and_quantities[key][row['tube_assembly_id']]['suppliers'].add(row['supplier'])
 			else:
-				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [], 'quantity': [row['quantity']]}
+				components_and_quantities[key][row['tube_assembly_id']] = {'costs': [], 'quantity': [row['quantity']], 'suppliers': Set([row['supplier']])}
 		else:
-			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [], 'quantity': [row['quantity']]}}
+			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [], 'quantity': [row['quantity']], 'suppliers': Set([row['supplier']])}}
 
 
 	counter = 0
@@ -486,6 +492,10 @@ def extract_train_and_test(train, test):
 
 		num_tubes_with_same_component_list = len(components_and_quantities[key])
 		train.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
+		
+		#num_suppliers_with_same_component_list = sum(len(components_and_quantities[key][tube_id]['suppliers']) for tube_id in components_and_quantities[key])
+		num_suppliers_with_same_component_list = len(reduce(lambda x,y: x.union(y), [components_and_quantities[key][tube_id]['suppliers'] for tube_id in components_and_quantities[key]]))
+		train.set_value(idx, "num_suppliers_with_same_component_list", num_suppliers_with_same_component_list)
 
 		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
 		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
@@ -540,6 +550,9 @@ def extract_train_and_test(train, test):
 		num_tubes_with_same_component_list = len(components_and_quantities[key])
 		test.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
 
+		#num_suppliers_with_same_component_list = sum(len(components_and_quantities[key][tube_id]['suppliers']) for tube_id in components_and_quantities[key])
+		num_suppliers_with_same_component_list = len(reduce(lambda x,y: x.union(y), [components_and_quantities[key][tube_id]['suppliers'] for tube_id in components_and_quantities[key]]))
+		test.set_value(idx, "num_suppliers_with_same_component_list", num_suppliers_with_same_component_list)
 		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
 		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
 		#Code below extracts the minimum 

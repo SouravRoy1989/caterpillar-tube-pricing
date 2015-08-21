@@ -375,13 +375,15 @@ def extract(data):
 
 	return data_merged
 
-def output_final_model(X_train, y_train, X_test, clf, submission_filename):
-	clf.fit(X_train, y_train)
-	for idx, col in enumerate(X_train):
-		print col + ':' + str(clf.feature_importances_[idx])
-	train_predictions = clf.predict(X_train)
-	predictions = clf.predict(X_test)
-	#predictions = [max(x, 0) for x in predictions]
+def output_final_model(X_train, y_train, X_test, clf, submission_filename, feature_names):
+	clf.fit(X_train[feature_names], y_train)
+
+	importance_count = 0
+	for idx, col in enumerate(X_train[feature_names]):
+		print col + ':' + str(clf.feature_importances_[importance_count])
+		importance_count += 1
+	train_predictions = clf.predict(X_train[feature_names])
+	predictions = clf.predict(X_test[feature_names])
 	predictions = np.exp(predictions) - 1
 	submission = pd.DataFrame({"id": test["id"], "cost": predictions})
 	submission.to_csv(submission_filename, index=False)
@@ -389,11 +391,10 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename):
 	train_predictions = pd.DataFrame({"predicted_cost": train_predictions})
 	y_train = pd.DataFrame({"cost": y_train})
 	extracted_train = pd.concat(objs = [X_train, y_train, train_predictions], axis = 1)
-	extracted_train.to_csv('extracted_train.csv', index=False)
-
+	extracted_train.to_csv('extracted_data_with_predictions/extracted_train.csv', index = False)
 	predictions = pd.DataFrame({"predicted_cost": predictions})
 	extracted_test = pd.concat(objs = [X_test, predictions], axis = 1)
-	extracted_test.to_csv('extracted_test.csv', index=False)
+	extracted_test.to_csv('extracted_data_with_predictions/extracted_test.csv', index = False)
 
 def extract_train_and_test(train, test):
 	#Create total number of supplier quotes variable
@@ -589,6 +590,21 @@ def extract_train_and_test(train, test):
 	train['length_of_supplier_relationship'] = (train['quote_year'] - train['min_quote_year']) * 12 + train['quote_month'] - train['min_quote_month']
 	test['length_of_supplier_relationship'] = (test['quote_year'] - test['min_quote_year']) * 12 + test['quote_month'] - test['min_quote_month']
 	
+
+	quantities_to_agg = pd.concat([test[['tube_assembly_id', 'quantity']], train[['tube_assembly_id', 'quantity']]])
+	grouped = quantities_to_agg.groupby('tube_assembly_id')
+	min_quantity = grouped.aggregate(np.min)
+	max_quantity = grouped.aggregate(np.max)
+
+	min_quantity.columns = ['min_quantity']
+	max_quantity.columns = ['max_quantity']
+
+	train = pd.merge(left = train, right = min_quantity, left_on = 'tube_assembly_id', how = 'left', right_index = True)
+	test = pd.merge(left = test, right = min_quantity, left_on = 'tube_assembly_id', how = 'left', right_index = True)
+
+	train = pd.merge(left = train, right = max_quantity, left_on = 'tube_assembly_id', how = 'left', right_index = True)
+	test = pd.merge(left = test, right = max_quantity, left_on = 'tube_assembly_id', how = 'left', right_index = True)
+
 	return (train, test)
 
 if __name__ == '__main__':
@@ -602,7 +618,11 @@ if __name__ == '__main__':
 	#Perform extraction that relies on aggregating data across train and test sets
 	(train, test) = extract_train_and_test(train, test)
 
+	train.to_csv('extracted_train.csv', index=False)
+	test.to_csv('extracted_test.csv', index=False)
+
 	#Drop columns that have too many 0s or -1s (i.e. NAs/missing values)
+	'''
 	columns_to_drop = []
 	for column in train:
 		num_nulls = len(train[train[column] == -1]) + len(train[train[column] == 0])
@@ -610,7 +630,7 @@ if __name__ == '__main__':
 			columns_to_drop.append(column)
 	train = train.drop(columns_to_drop, 1)
 	test = test.drop(columns_to_drop, 1)
-
+	'''
 
     #Gather features to use - don't want to use "cost" nor any feature with an object data type.
 	feature_names = []
@@ -618,12 +638,12 @@ if __name__ == '__main__':
 		if train[feature].dtype != 'object' and feature != 'cost':
 			feature_names.append(feature)
 
-	X_train = train[feature_names]
 	y_train = train['cost']
+	train = train.drop(['cost'], 1)
 
-	X_test = test[feature_names]
+	#X_test = test[feature_names]
 
 	clf = RandomForestRegressor(n_estimators = 20)
 
-	evaluation.get_kfold_scores(X = X_train, y = y_train, n_folds = 8, clf = clf)
-	output_final_model(X_train = X_train, y_train = y_train, X_test = X_test, clf = clf, submission_filename = 'submission.csv')
+	evaluation.get_kfold_scores(X = train, y = y_train, n_folds = 8, clf = clf, feature_names = feature_names)
+	output_final_model(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = feature_names)

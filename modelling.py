@@ -3,6 +3,7 @@ import evaluation
 from sklearn.ensemble import RandomForestRegressor
 import csv
 from sklearn.preprocessing import Imputer
+from sklearn import ensemble, preprocessing
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 import os
@@ -409,6 +410,17 @@ def extract_train_and_test(train, test):
 	train = pd.merge(left = train, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 	test = pd.merge(left = test, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 
+
+	#Label encode categorical variables
+	labels_to_encode = ['component_id_' + str(x) for x in range(1,9)]
+	labels_to_encode.append('supplier')
+
+	for label in labels_to_encode:
+		lbl = preprocessing.LabelEncoder()
+		lbl.fit(pd.concat([train[label], test[label]]))
+		train[label] = lbl.transform(train[label])
+		test[label] = lbl.transform(test[label])
+	
 	#Create average component popularity variable
 
 	#Create price of the similar tube variable - find tubes with the same combo of components and use its average cost

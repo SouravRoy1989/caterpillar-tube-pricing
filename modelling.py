@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.preprocessing import LabelEncoder
 import os
 import csv
+import xgboost as xgb
 
 def get_adjacent_tube_assembly_ids(tube_assembly_id):
 	tube_assembly_num = int(tube_assembly_id[3:])
@@ -57,6 +58,7 @@ def extract(data):
 	data_merged['total_quantity_components'] = data_merged[quantity_vars].sum(axis = 1)
 	data_merged = data_merged.fillna("")
 
+	'''
 	type_component = pd.read_csv('competition_data/type_component.csv')
 	for component_type_id in type_component['component_type_id']:
 		data_merged[component_type_id] = 0
@@ -83,7 +85,7 @@ def extract(data):
 		for var in component_vars:
 			if row[var] in component_mapping:
 				data_merged.set_value(idx, component_mapping[row[var]], 1)
-
+	'''
 
 	#Additional processing of component data and adding it to train/test.
 	comp_files = ['comp_adaptor.csv', 'comp_boss.csv', 'comp_elbow.csv', 'comp_float.csv', 'comp_hfl.csv', 'comp_nut.csv', 'comp_other.csv', 'comp_sleeve.csv', 'comp_straight.csv', 'comp_tee.csv', 'comp_threaded.csv']
@@ -397,6 +399,70 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename, featu
 	extracted_test = pd.concat(objs = [X_test, predictions], axis = 1)
 	extracted_test.to_csv('extracted_data_with_predictions/extracted_test.csv', index = False)
 
+	params = {}
+	params["objective"] = "reg:linear"
+	params["eta"] = 0.02
+	params["min_child_weight"] = 6
+	params["subsample"] = 0.7
+	params["colsample_bytree"] = 0.6
+	params["scale_pos_weight"] = 0.8
+	params["silent"] = 1
+	params["max_depth"] = 8
+	params["max_delta_step"]=2
+
+	plst = list(params.items())
+
+	X_train = X_train[feature_names].astype(float)
+	X_test = X_test[feature_names].astype(float)
+
+	X_train = np.array(X_train)
+	X_test = np.array(X_test)
+
+	xgtrain = xgb.DMatrix(X_train, label=y_train.values)
+	xgtest = xgb.DMatrix(X_test)
+	
+	print('2000')
+
+
+	num_rounds = 2000
+	model = xgb.train(plst, xgtrain, num_rounds)
+	preds1 = model.predict(xgtest)
+
+	print('3000')
+
+	num_rounds = 3000
+	model = xgb.train(plst, xgtrain, num_rounds)
+	preds2 = model.predict(xgtest)
+
+	print('4000')
+
+	num_rounds = 4000
+	model = xgb.train(plst, xgtrain, num_rounds)
+	preds4 = model.predict(xgtest)
+	
+	y_train['cost'] = np.exp(y_train['cost']) - 1
+	label_log = np.power(y_train,1/16)
+
+	xgtrain = xgb.DMatrix(X_train, label=label_log.values)
+	xgtest = xgb.DMatrix(X_test)
+
+	print('power 1/16 4000')
+
+	num_rounds = 4000
+	model = xgb.train(plst, xgtrain, num_rounds)
+	preds3 = model.predict(xgtest)
+
+	#for loop in range(2):
+	#    model = xgb.train(plst, xgtrain, num_rounds)
+	#    preds1 = preds1 + model.predict(xgtest)
+	preds = 0.4*np.expm1(preds4)+.1*np.expm1(preds1)+0.1*np.expm1(preds2)+0.4*np.power(preds3,16)
+	#preds = (0.58*np.expm1( (preds1+preds2+preds4)/3))+(0.42*np.power(preds3,16))
+
+	preds = pd.DataFrame({"id": test["id"], "cost": preds})
+	preds.to_csv('xgboost_submission.csv', index=False)
+
+
+
 def extract_train_and_test(train, test):
 	#Create total number of supplier quotes variable
 	#Counts the number of distinct tube ids for each supplier
@@ -657,5 +723,5 @@ if __name__ == '__main__':
 
 	clf = RandomForestRegressor(n_estimators = 20)
 
-	evaluation.get_kfold_scores(X = train, y = y_train, n_folds = 8, clf = clf, feature_names = feature_names)
+	#evaluation.get_kfold_scores(X = train, y = y_train, n_folds = 8, clf = clf, feature_names = feature_names)
 	output_final_model(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = feature_names)

@@ -441,7 +441,7 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename, featu
 	preds4 = model.predict(xgtest)
 	
 	y_train['cost'] = np.exp(y_train['cost']) - 1
-	label_log = np.power(y_train,1/16)
+	label_log = np.power(y_train,1.0/16.0)
 
 	xgtrain = xgb.DMatrix(X_train, label=label_log.values)
 	xgtest = xgb.DMatrix(X_test)

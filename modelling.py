@@ -18,12 +18,17 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename, featu
 	with open('importances.csv', 'wb') as f:
 		writer = csv.writer(f)
 		importance_count = 0
+		features_to_return = []
 		for idx, col in enumerate(X_train[feature_names]):
 			print col + ':' + str(clf.feature_importances_[importance_count])
 			writer.writerow([col, clf.feature_importances_[importance_count]])
 
+			
+			if clf.feature_importances_[importance_count] >= .0001:
+				features_to_return.append(col)
 			importance_count += 1
-	
+
+
 	train_predictions = clf.predict(X_train[feature_names])
 	predictions = clf.predict(X_test[feature_names])
 	predictions = np.exp(predictions) - 1
@@ -38,6 +43,7 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename, featu
 	extracted_test = pd.concat(objs = [X_test, predictions], axis = 1)
 	extracted_test.to_csv('extracted_data_with_predictions/extracted_test.csv', index = False)
 
+	return features_to_return
 def run_xgboost(X_train, y_train, X_test, clf, submission_filename, feature_names):
 
 	params = {}
@@ -122,5 +128,6 @@ if __name__ == '__main__':
 	clf = RandomForestRegressor(n_estimators = 20)
 
 	#evaluation.get_kfold_scores(X = train, y = y_train, n_folds = 8, clf = clf, feature_names = feature_names)
-	#output_final_model(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = feature_names)
-	run_xgboost(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = feature_names)
+	best_features = output_final_model(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = feature_names)
+	print best_features
+	run_xgboost(X_train = train, y_train = y_train, X_test = test, clf = clf, submission_filename = 'submission.csv', feature_names = best_features)

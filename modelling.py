@@ -24,7 +24,7 @@ def output_final_model(X_train, y_train, X_test, clf, submission_filename, featu
 			writer.writerow([col, clf.feature_importances_[importance_count]])
 
 			
-			if clf.feature_importances_[importance_count] >= .0001:
+			if clf.feature_importances_[importance_count] >= .0001 and col != 'min_quantity' and col != 'max_quantity':
 				features_to_return.append(col)
 			importance_count += 1
 

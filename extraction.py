@@ -1,18 +1,23 @@
 
 import pandas as pd
-import evaluation
-from sklearn.ensemble import RandomForestRegressor
-import csv
-from sklearn.preprocessing import Imputer
-from sklearn import ensemble, preprocessing
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
-import os
 import csv
-import xgboost as xgb
 import pickle
 
+'''
+Extracts variables from the training and test sets and pickles the resulting
+data frames for use in modelling.py.
+'''
+
 def get_adjacent_tube_assembly_ids(tube_assembly_id):
+
+	'''
+	Helper function to calculate the tube assembly ids adjacent 
+	to tube_assembly_id. Used to help calculate min_adjacent_cost,
+	max_adjacent_cost, and average_adjacent_cost.
+
+	'''
 	tube_assembly_num = int(tube_assembly_id[3:])
 	tube_assembly_down = str(tube_assembly_num - 1)
 	tube_assembly_up = str(tube_assembly_num + 1)
@@ -24,8 +29,11 @@ def get_adjacent_tube_assembly_ids(tube_assembly_id):
 	return ('TA-' + tube_assembly_down, 'TA-' + tube_assembly_up)
 
 def extract(data):
-	
-	#tube_data = pd.read_csv('competition_data/tube.csv').fillna("")
+	'''
+	Extracts data from train and test. Only calculates features
+	that don't require aggregating data across a combined train/test set.
+	'''
+
 	tube_data = pd.read_csv('competition_data/tube.csv').fillna("")
 	data_merged = pd.merge(left = data, right = tube_data, how='inner', on='tube_assembly_id')
 	bill_of_materials = pd.read_csv('competition_data/bill_of_materials.csv')
@@ -61,35 +69,12 @@ def extract(data):
 	data_merged = data_merged.fillna("")
 
 	'''
-	type_component = pd.read_csv('competition_data/type_component.csv')
-	for component_type_id in type_component['component_type_id']:
-		data_merged[component_type_id] = 0
-	data_merged['OTHER'] = 0
-
-	with open('competition_data/components.csv', 'rb') as csvfilereader:
-		with open('competition_data/components_v2.csv', 'wb') as csvfilewriter:
-			reader = csv.reader(csvfilereader)
-			writer = csv.writer(csvfilewriter)
-			for row in reader:
-				if len(row) == 4:
-					del row[2]
-					writer.writerow(row)
-				else:
-					writer.writerow(row)
-
-
-	component = pd.read_csv('competition_data/components_v2.csv')
-	component_mapping = {}
-	for idx, row in component.iterrows():
-		component_mapping[row['component_id']] = row['component_type_id']
-	component_vars = ['component_id_' + str(x) for x in range(1,9)]
-	for idx, row in data_merged.iterrows():
-		for var in component_vars:
-			if row[var] in component_mapping:
-				data_merged.set_value(idx, component_mapping[row[var]], 1)
+	The remainder of this function adds features from each of the component files (i.e.
+	csv data files beginning with 'comp_'). Variables common across component files are 
+	aggregated in various ways, including taking the sum, average, or creating a separate
+	indicator variable for each value of a categorical variable.
 	'''
 
-	#Additional processing of component data and adding it to train/test.
 	comp_files = ['comp_adaptor.csv', 'comp_boss.csv', 'comp_elbow.csv', 'comp_float.csv', 'comp_hfl.csv', 'comp_nut.csv', 'comp_other.csv', 'comp_sleeve.csv', 'comp_straight.csv', 'comp_tee.csv', 'comp_threaded.csv']
 	component_names = ['component_id_' + str(x) for x in range(1, 9)]
 	concat_final_output = []
@@ -103,12 +88,9 @@ def extract(data):
 			for row in comp_reader:
 				comp_variables[row['component_id']] = row
 
-	counter = {x:0 for x in range(10)}
-	
-	#Add all of the relevant component data.
+	#Scans through each tube record in the merged data, examines the components that tube has,
+	#and assigns variables aggregated from the component data.
 	for idx, row in data_merged.iterrows():
-		count = 0
-
 		weight = 0.0
 		names = []
 		orientation_yes = 0
@@ -184,8 +166,6 @@ def extract(data):
 					#Get nominal sizes (there are 4 in one file and 2 in another)
 					nominal_sizes = [x for x in comp_variables[name] if x[0:13] == 'nominal_size_']
 					total_nominal_size = sum(float(comp_variables[name][x]) for x in nominal_sizes if comp_variables[name][x] != 'NA' and comp_variables[name][x] != 'See Drawing')
-				#Note - a lot of records have a thread pitch - is it possible something can have multiple 
-				#components and thus multiple thread pitches? If so, want to think of proper way to aggregate.
 				if 'thread_pitch' in comp_variables[name]:
 					thread_pitch = comp_variables[name]['thread_pitch']
 				if 'adaptor_angle' in comp_variables[name]:
@@ -363,28 +343,18 @@ def extract(data):
 		data_merged.set_value(idx, 'groove_yes', groove_yes)
 		data_merged.set_value(idx, 'groove_no', groove_no)
 
-	print "Counter"
-	print counter
-
-
-	from sets import Set
-	values = Set([])
-	for entry in comp_variables:
-		if 'unique_feature' in comp_variables[entry]:
-
-			values.add(comp_variables[entry]['unique_feature'])
-	print values
-
-	
-
 
 	return data_merged
 
+'''
+Extracts information that requires aggregating information across 
+both train and test sets (requires both datasets passed as function 
+argument).
 
-
+'''
 def extract_train_and_test(train, test):
 	#Create total number of supplier quotes variable
-	#Counts the number of distinct tube ids for each supplier
+	#that counts the number of distinct tube ids supplied by each supplier
 	train_s_tid = train[['supplier', 'tube_assembly_id']]
 	test_s_tid = test[['supplier', 'tube_assembly_id']]
 	concat_s_tid = pd.concat([train_s_tid, test_s_tid])
@@ -395,22 +365,15 @@ def extract_train_and_test(train, test):
 	train = pd.merge(left = train, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 	test = pd.merge(left = test, right = df_num_suppliers, left_on = 'supplier', how = 'left', right_index = True)
 
-
 	#Label encode categorical variables
 	labels_to_encode = ['component_id_' + str(x) for x in range(1,9)]
 	labels_to_encode.append('supplier')
 
 	for label in labels_to_encode:
-		lbl = preprocessing.LabelEncoder()
+		lbl = LabelEncoder()
 		lbl.fit(pd.concat([train[label], test[label]]))
 		train[label] = lbl.transform(train[label])
 		test[label] = lbl.transform(test[label])
-	
-	#Create average component popularity variable
-
-	#Create price of the similar tube variable - find tubes with the same combo of components and use its average cost
-	#as a variable (will want to refine this later)
-	#one possible refinement - if there is no exact match, come up with some type of similarity measure that incorporates cost.
 
 	component_ids = ['component_id_' + str(x) for x in range(1,9)]
 	quantities = ['quantity_' + str(x) for x in range(1,9)]
@@ -443,65 +406,20 @@ def extract_train_and_test(train, test):
 		else:
 			components_and_quantities[key] = {row['tube_assembly_id']: {'costs': [], 'quantity': [row['quantity']], 'suppliers': Set([row['supplier']])}}
 
-
-	counter = 0
-	for key in components_and_quantities:
-		print str(key) + ': ' + str(components_and_quantities[key])
-		counter += 1
-		if counter >= 5:
-			break
-	#Save the dict to play around with it
-	import pickle
-	with open('components_and_quantities.pkl', 'wb') as f:
-		pickle.dump(components_and_quantities, f)
-	#Fill in the values of average price of tube with similar components. Take value 0 if no other tubes with same component
-	#combo. Idea - use median, max, min in addition to average. Also try tracking quantity and making the feature avg(cost/quantity)
-	#rather than just avg(cost).
 	
 	for idx, row in train.iterrows():
-		avg_price_of_similar_tubes = 0
-		max_price_of_similar_tubes = 0
-		min_price_of_similar_tubes = 10000000
+
 		key = tuple(row[x] for x in component_ids + quantities)
 		
-		'''
-		if len(components_and_quantities[key]) > 1:
-			total = 0
-			count = 0
-			for tube_id in components_and_quantities[key]:
-				if tube_id != row['tube_assembly_id']:
-					total += sum(components_and_quantities[key][tube_id]['costs'])
-					count += len(components_and_quantities[key][tube_id]['costs'])
-					if components_and_quantities[key][tube_id]['costs']:
-						running_max = max(components_and_quantities[key][tube_id]['costs'])
-						running_min = min(components_and_quantities[key][tube_id]['costs'])
-						if running_max > max_price_of_similar_tubes:
-							max_price_of_similar_tubes = running_max
-						if running_min < min_price_of_similar_tubes:
-							min_price_of_similar_tubes = running_min
-
-			if count != 0:
-				avg_price_of_similar_tubes = float(total)/float(count)
-			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
-		train.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
-		train.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
-		if min_price_of_similar_tubes == 10000000:
-			min_price_of_similar_tubes = 0
-		train.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
-		train.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
-		'''
-
 		num_tubes_with_same_component_list = len(components_and_quantities[key])
 		train.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
 		
-		#num_suppliers_with_same_component_list = sum(len(components_and_quantities[key][tube_id]['suppliers']) for tube_id in components_and_quantities[key])
 		num_suppliers_with_same_component_list = len(reduce(lambda x,y: x.union(y), [components_and_quantities[key][tube_id]['suppliers'] for tube_id in components_and_quantities[key]]))
 		train.set_value(idx, "num_suppliers_with_same_component_list", num_suppliers_with_same_component_list)
 
-		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
-		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
-		#Code below extracts the minimum 
-		#Possible refinement - make adjacent_cost the cost with the closest quantity to the record we are looking at
+		#Look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
+		#get the min, max, and average cost of TA-02797 or TA-02795 (if they exist with a cost)
+		#If they don't exist, just set variable to 0.
 		tube_assembly_id = row['tube_assembly_id']
 		adjacent_tube_assembly_ids = get_adjacent_tube_assembly_ids(tube_assembly_id)
 		min_adjacent_cost = 0
@@ -519,49 +437,17 @@ def extract_train_and_test(train, test):
 		train.set_value(idx, "average_adjacent_cost", average_adjacent_cost)
 
 
-
+	#Perform the same operations as the above for loop on the test data set.
 	for idx, row in test.iterrows():
-		avg_price_of_similar_tubes = 0
-		max_price_of_similar_tubes = 0
-		min_price_of_similar_tubes = 10000000
+
 		key = tuple(row[x] for x in component_ids + quantities)
 		
-		'''
-		if key in components_and_quantities:
-			total = 0
-			count = 0
-			for tube_id in components_and_quantities[key]:
-				total += sum(components_and_quantities[key][tube_id]['costs'])
-				count += len(components_and_quantities[key][tube_id]['costs'])
-				if components_and_quantities[key][tube_id]['costs']:
-					running_max = max(components_and_quantities[key][tube_id]['costs'])
-					running_min = min(components_and_quantities[key][tube_id]['costs'])
-					if running_max > max_price_of_similar_tubes:
-						max_price_of_similar_tubes = running_max
-					if running_min < min_price_of_similar_tubes:
-						min_price_of_similar_tubes = running_min
-			
-			if count != 0:
-				avg_price_of_similar_tubes = float(total)/float(count)
-				
-			adj_avg_price_of_similar_tubes = avg_price_of_similar_tubes - np.log(row['quantity'])
-		test.set_value(idx, "avg_price_of_similar_tubes", avg_price_of_similar_tubes)
-		test.set_value(idx, "max_price_of_similar_tubes", max_price_of_similar_tubes)
-		if min_price_of_similar_tubes == 10000000:
-			min_price_of_similar_tubes = 0
-		test.set_value(idx, "min_price_of_similar_tubes", min_price_of_similar_tubes)
-		test.set_value(idx, "adj_avg_price_of_similar_tubes", adj_avg_price_of_similar_tubes)
-		'''
-
 		num_tubes_with_same_component_list = len(components_and_quantities[key])
 		test.set_value(idx, "num_tubes_with_same_component_list", num_tubes_with_same_component_list)
 
-		#num_suppliers_with_same_component_list = sum(len(components_and_quantities[key][tube_id]['suppliers']) for tube_id in components_and_quantities[key])
 		num_suppliers_with_same_component_list = len(reduce(lambda x,y: x.union(y), [components_and_quantities[key][tube_id]['suppliers'] for tube_id in components_and_quantities[key]]))
 		test.set_value(idx, "num_suppliers_with_same_component_list", num_suppliers_with_same_component_list)
-		#Other idea - just look at the price of a tube with a "nearby" tube name. e.g. you are looking at TA-02796
-		#and then use the price of TA-02797 or TA-02795 (if they exist with a cost) - if they don't exist, just set variable to 0.
-		#Code below extracts the minimum 
+		
 		tube_assembly_id = row['tube_assembly_id']
 		adjacent_tube_assembly_ids = get_adjacent_tube_assembly_ids(tube_assembly_id)
 		min_adjacent_cost = 0
@@ -615,7 +501,6 @@ if __name__ == '__main__':
 	train = extract(train)
 	test = extract(test)
 
-	#Perform extraction that relies on aggregating data across train and test sets
 	(train, test) = extract_train_and_test(train, test)
 
 	train.to_csv('extracted_train.csv', index=False)
